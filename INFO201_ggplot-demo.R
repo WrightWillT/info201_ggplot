@@ -309,3 +309,109 @@ distribution_visualizer_wecTheme_basic(mtcars$mpg,
                                           "MPG")
 
 
+# Crosstabs
+# This is some really early work in my career and it is terrible code, but I wanted to give an example of how
+  # involved this can get
+
+crosstabber <- function(var1_input, var2_input){
+  # generate cross tabs in both margins and prop format
+  xtabs <- table(surveyData[,var1_input], surveyData[,var2_input])
+  xtabs_prop <- prop.table(xtabs, 1)
+  pval <- summary(xtabs)$p.value
+  sigSymbol <- symnum(pval, corr = FALSE,
+                      cutpoints = c(0,  .001,.01,.05, .1, 1),
+                      symbols = c("***","**","*","."," "))
+  
+  xtabs_df <- as.data.frame(xtabs)
+  
+  # generate margins and proportions for the xvar
+  margins <- as.data.frame(margin.table(xtabs,1))
+  props <- as.data.frame(prop.table(xtabs,1))
+  
+  # convert labels to view-friendly format
+  suppressMessages(library(Hmisc)) #silently load package that does the capitalization
+  xlab <- capitalize(questionLookup$questionCode[var1_input])
+  legendLab <- capitalize(questionLookup$questionCode[var2_input])
+  titleVolume <- paste0(capitalize(questionLookup$questionCode[var1_input]),
+                        " cut by ",
+                        capitalize(questionLookup$questionCode[var2_input]), " - Response Volumes",
+                        sigSymbol)
+  titleProp <- paste0(capitalize(questionLookup$questionCode[var1_input]),
+                      " cut by ",
+                      capitalize(questionLookup$questionCode[var2_input]), " - Factor Proportions",
+                      sigSymbol)
+  detach("package:Hmisc", unload = TRUE) # always unload this package since it interferes with other packages
+  # convert answers to view-friendly format via lookup based on questionCode and answerCode
+  
+  #----PLOTS----
+  # standard bar chart with the fill being another factor
+  p1 <- ggplot(xtabs_df) +
+    geom_bar(stat = "identity", aes(x = xtabs_df[,1], fill = xtabs_df[,2], y = Freq)) +
+    labs(title = titleVolume, x = xlab, y = "Responses") +
+    scale_fill_discrete(name = legendLab) + 
+    theme_bw() + 
+    geom_text(data = margins, 
+              aes(label = paste0(Freq," (",round(Freq/nrow(surveyData)*100,1),"%)"),
+                  x = Var1,
+                  y = Freq), 
+              vjust = -0.5) +
+    theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust=1)) +
+    if(nrow(subset(xtabs_df,Freq>15))>0) { # setting these as conditional because it'll fail if the subsetting below have 0 rows
+      geom_text(data = subset(xtabs_df,Freq>15),
+                aes(label = paste0(Freq," (",round(Freq/sum(Freq)*100,1),"%)"), 
+                    x = Var1, 
+                    y = Freq,
+                    group = Var2),
+                position = position_stack(vjust = 0.5),
+                color = "white")
+    }
+  
+  
+  # 100% stacked bar chart
+  p2 <- ggplot(xtabs_df) +
+    geom_bar(stat = "identity", position = "fill", aes(x = xtabs_df[,1], fill = xtabs_df[,2], y = Freq)) +
+    labs(title = titleProp, x = xlab, y = "Within-Factor Composition") +
+    theme_bw() + 
+    scale_fill_discrete(name = legendLab) + 
+    theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust=1)) +
+    scale_y_continuous(labels=scales::percent) +
+    geom_text(data = subset(props,Freq>0.02),
+              aes(label = paste0(round(Freq*100,1),"%"),
+                  x = Var1,
+                  y = Freq,
+                  group = Var2),
+              color = "white",
+              position = position_stack(vjust = 0.5))
+  
+  g1 <- ggplotGrob(p1)
+  g2 <- ggplotGrob(p2)
+  g<-gtable:::rbind_gtable(g1, g2, "first")
+  panels <- g$layout$t[grep("panel", g$layout$name)]
+  g$heights[panels] <- unit(c(1,1), "null")
+  grid.newpage()
+  grid.draw(g)
+}
+
+
+# function to compare one factor by all the others and create a single .pdf
+# this version for v04 allows the user to specify a different number for the file name
+singleFactor_pdfGenerator<-function(numericFactor_input, fileName_input = numericFactor_input){
+  name<-paste0(sprintf("%03d",fileName_input),"_",colnames(surveyData)[numericFactor_input])
+  num.plots<-dim(surveyData)[2]
+  my.plots<-vector(num.plots, mode='list')
+  for(i in 1:dim(surveyData)[2]) {
+    crosstabber(numericFactor_input,i)
+    my.plots[[i]]<-recordPlot()
+  }
+  
+  graphics.off()
+  
+  pdf(paste0(name,".pdf"), onefile=TRUE, width = 7, height = 11)
+  for (my.plot in my.plots) {
+    replayPlot(my.plot)
+  }
+  graphics.off()
+}
+
+
+
