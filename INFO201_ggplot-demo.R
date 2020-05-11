@@ -11,6 +11,8 @@
 
 library(tidyverse)
 library(scales)
+library(gridExtra)
+library(ggthemes)
 
 ########################################################################################################################
 # GGPLOT BASICS
